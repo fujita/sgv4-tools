@@ -1,0 +1,5 @@
+makeshift sg v4 tools
+
+The interface of sg v4 has changed continuously. After mainline
+inclusion, Doug's sg tools support sg v4. Until then, this would be
+useful for sg v4 development.
