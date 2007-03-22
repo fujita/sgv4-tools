@@ -3,9 +3,14 @@ KSRC ?= /lib/modules/$(KERNELRELEASE)/build
 
 CFLAGS += -O2 -fno-inline -Wall -Wstrict-prototypes -g -I$(KSRC)/include
 
-PROGRAMS = sgv4_dd
+PROGRAMS = sgv4_dd sgv4_bench
+
+all: $(PROGRAMS)
 
 sgv4_dd: sgv4_dd.o libbsg.o
+	$(CC) $^ -o $@
+
+sgv4_bench: sgv4_bench.o libbsg.o
 	$(CC) $^ -o $@
 
 clean:
