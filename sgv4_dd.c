@@ -123,35 +123,29 @@ int main(int argc, char **argv)
 	} else
 		out_fd = STDOUT_FILENO;
 
+	if (rw != READ_10 && rw != WRITE_10) {
+		fprintf(stderr, "infile or outfile must be a bsd device\n");
+		return -EINVAL;
+	}
+
 	buf = valloc(bs * count);
 	if (!buf) {
 		close(in_fd);
 		return -ENOMEM;
 	}
 
-	memset(&hdr, 0, sizeof(hdr));
 	memset(&scb, 0, sizeof(scb));
+
+	if (rw == READ_10)
+		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
+			       buf, bs * count, NULL, 0);
+	else
+		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
+			       NULL, 0, buf, bs * count);
 
 	scb[0] = rw;
 	scb[7] = (unsigned char)(((bs * count / SECTOR_SIZE) >> 8) & 0xff);
 	scb[8] = (unsigned char)((bs * count / SECTOR_SIZE) & 0xff);
-
-	hdr.guard = 'Q';
-	hdr.request_len = sizeof(scb);
-	hdr.request = (unsigned long) scb;
-	hdr.max_response_len = sizeof(sense);
-	hdr.response = (unsigned long) sense;
-
-	if (rw == READ_10) {
-		hdr.din_xfer_len = bs * count;
-		hdr.din_xferp = (unsigned long) buf;
-	} else if (rw == WRITE_10) {
-		hdr.dout_xfer_len = bs * count;
-		hdr.dout_xferp = (unsigned long) buf;
-	} else {
-		fprintf(stderr, "infile or outfile must be a bsd device\n");
-		return -EINVAL;
-	}
 
 	if (rw == WRITE_10) {
 		err = read(in_fd, buf, bs * count);

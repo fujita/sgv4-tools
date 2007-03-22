@@ -7,6 +7,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <scsi/scsi.h>
+#include <scsi/sg.h>
+#include <linux/bsg.h>
 
 int open_bsg_dev(char *in)
 {
@@ -49,4 +52,23 @@ close_sysfs:
 	fclose(fp);
 
 	return fd >=0 ? fd : -errno;
+}
+
+void setup_sgv4_hdr(struct sg_io_v4 *hdr, unsigned char *scb, int scb_len,
+		    unsigned char *sense, int sense_len,
+		    char *rbuf, int rlen, char *wbuf, int wlen)
+{
+	memset(hdr, 0, sizeof(*hdr));
+
+	hdr->guard = 'Q';
+	hdr->request_len = scb_len;
+	hdr->request = (unsigned long) scb;
+	hdr->max_response_len = sense_len;
+	hdr->response = (unsigned long) sense;
+
+	hdr->din_xfer_len = rlen;
+	hdr->din_xferp = (unsigned long) rbuf;
+
+	hdr->dout_xfer_len = wlen;
+	hdr->dout_xferp = (unsigned long) wbuf;
 }
