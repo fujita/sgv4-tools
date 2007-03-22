@@ -171,10 +171,10 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if (hdr.driver_status || hdr.transport_status || hdr.device_status
-		    || hdr.din_resid) {
-			fprintf(stderr, "error %u %u %u\n", hdr.driver_status,
-				hdr.transport_status, hdr.device_status);
+		if (sgv4_rsp_check(&hdr)) {
+			fprintf(stderr, "error %x %x %x %u\n",
+				hdr.driver_status, hdr.transport_status,
+				hdr.device_status, hdr.din_resid);
 			err = -errno;
 			goto out;
 		}

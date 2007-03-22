@@ -11,4 +11,14 @@ extern void setup_sgv4_hdr(struct sg_io_v4 *hdr, unsigned char *scb, int scb_len
 
 extern void setup_rw_scb(unsigned char *scb, int scb_len, unsigned char cmd,
 			 unsigned long len, unsigned long offset);
+
+static inline int sgv4_rsp_check(struct sg_io_v4 *hdr)
+{
+	if (hdr->driver_status || hdr->transport_status || hdr->device_status
+	    || hdr->din_resid)
+		return 1;
+	else
+		return 0;
+}
+
 #endif
