@@ -22,8 +22,6 @@
 
 #include "libbsg.h"
 
-#define SECTOR_SIZE 512
-
 static char pname[] = "sgv4_dd";
 
 static struct option const long_options[] =
@@ -63,7 +61,8 @@ int main(int argc, char **argv)
 	int err, longindex, ch;
 	int in_fd, out_fd, bs, count, bsg_fd = -1, sgio = 0, rw = -1;
 	struct sg_io_v4 hdr;
-	char scb[10], sense[32], *buf, *in, *out;
+	unsigned char scb[10], sense[32];
+	char *buf, *in, *out;
 
 	bs = SECTOR_SIZE;
 	count = 1;
@@ -134,7 +133,7 @@ int main(int argc, char **argv)
 		return -ENOMEM;
 	}
 
-	memset(&scb, 0, sizeof(scb));
+	setup_rw_scb(scb, sizeof(scb), rw, bs * count, 0);
 
 	if (rw == READ_10)
 		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
@@ -142,10 +141,6 @@ int main(int argc, char **argv)
 	else
 		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
 			       NULL, 0, buf, bs * count);
-
-	scb[0] = rw;
-	scb[7] = (unsigned char)(((bs * count / SECTOR_SIZE) >> 8) & 0xff);
-	scb[8] = (unsigned char)((bs * count / SECTOR_SIZE) & 0xff);
 
 	if (rw == WRITE_10) {
 		err = read(in_fd, buf, bs * count);

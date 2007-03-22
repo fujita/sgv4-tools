@@ -6,10 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <netinet/in.h>
 #include <sys/stat.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
 #include <linux/bsg.h>
+
+#include "libbsg.h"
 
 int open_bsg_dev(char *in)
 {
@@ -71,4 +74,16 @@ void setup_sgv4_hdr(struct sg_io_v4 *hdr, unsigned char *scb, int scb_len,
 
 	hdr->dout_xfer_len = wlen;
 	hdr->dout_xferp = (unsigned long) wbuf;
+}
+
+void setup_rw_scb(unsigned char *scb, int scb_len, unsigned char cmd,
+		  unsigned long len, unsigned long offset)
+{
+	memset(scb, 0, scb_len);
+
+	scb[0] = cmd;
+	scb[7] = (unsigned char)(((len / SECTOR_SIZE) >> 8) & 0xff);
+	scb[8] = (unsigned char)((len / SECTOR_SIZE) & 0xff);
+
+	*((uint32_t *) &scb[2]) = htonl(offset);
 }
