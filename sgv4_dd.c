@@ -41,13 +41,18 @@ static void usage(int status)
 	if (status)
 		fprintf(stderr, "Try `%s --help' for more information.\n", pname);
 	else {
-		printf("Usage: %s [DEVICE]\n", pname);
+		printf("Usage: %s [OPTIONS]...\n", pname);
 		printf("\
   -c, --count             number of BLOCKS. Default is 1\n\
   -i, --infile            read from FILE instead of stdin.\n\
   -o, --outfile           write to FILE instead of stdout.\n\
   -s, --sgio              Use SG_IO (ioctl) instead of read/write interface\n\
   -h, --help              display this help and exit\n\
+");
+		printf("\n\
+Examples:\n\
+  $ sgv4_dd -i /dev/sdb -o /dev/null\n\
+  $ sgv4_dd -c 16 -s -i /dev/sdb -o /dev/null\n\
 ");
 	}
 	exit(status);
