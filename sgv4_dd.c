@@ -59,7 +59,7 @@ Examples:\n\
 int main(int argc, char **argv)
 {
 	int err, longindex, ch;
-	int in_fd, out_fd, bs, count, bsg_fd = -1, sgio = 0, rw = -1;
+	int i, in_fd, out_fd, bs, count, bsg_fd = -1, sgio = 0, rw = -1;
 	struct sg_io_v4 hdr;
 	unsigned char scb[10], sense[32];
 	char *buf, *in, *out;
@@ -127,61 +127,63 @@ int main(int argc, char **argv)
 		return -EINVAL;
 	}
 
-	buf = valloc(bs * count);
+	buf = valloc(bs);
 	if (!buf) {
 		close(in_fd);
 		return -ENOMEM;
 	}
 
-	setup_rw_scb(scb, sizeof(scb), rw, bs * count, 0);
+	for (i = 0; i < count; i++) {
+		setup_rw_scb(scb, sizeof(scb), rw, bs, i * bs);
 
-	if (rw == READ_10)
-		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
-			       buf, bs * count, NULL, 0);
-	else
-		setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
-			       NULL, 0, buf, bs * count);
+		if (rw == READ_10)
+			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
+				       sizeof(sense), buf, bs, NULL, 0);
+		else
+			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
+				       sizeof(sense), NULL, 0, buf, bs);
 
-	if (rw == WRITE_10) {
-		err = read(in_fd, buf, bs * count);
-		if (err < 0) {
-			fprintf(stderr, "fail to read from the in file, %m\n");
-			goto out;
-		}
-	}
-
-	if (sgio) {
-		err = ioctl(bsg_fd, SG_IO, &hdr);
-		if (err) {
-			fprintf(stderr, "fail to sgio, %m\n");
-			goto out;
-		}
-	} else {
-		err = write(bsg_fd, &hdr, sizeof(hdr));
-		if (err < 0) {
-			fprintf(stderr, "fail to write bsg dev, %m\n");
-			goto out;
+		if (rw == WRITE_10) {
+			err = read(in_fd, buf, bs);
+			if (err < 0) {
+				fprintf(stderr, "fail to read from the in file, %m\n");
+				goto out;
+			}
 		}
 
-		err = read(bsg_fd, &hdr, sizeof(hdr));
-		if (err < 0) {
-			fprintf(stderr, "fail to write bsg dev, %m\n");
+		if (sgio) {
+			err = ioctl(bsg_fd, SG_IO, &hdr);
+			if (err) {
+				fprintf(stderr, "fail to sgio, %m\n");
+				goto out;
+			}
+		} else {
+			err = write(bsg_fd, &hdr, sizeof(hdr));
+			if (err < 0) {
+				fprintf(stderr, "fail to write bsg dev, %m\n");
+				goto out;
+			}
+
+			err = read(bsg_fd, &hdr, sizeof(hdr));
+			if (err < 0) {
+				fprintf(stderr, "fail to write bsg dev, %m\n");
+				goto out;
+			}
+		}
+
+		if (hdr.driver_status || hdr.transport_status || hdr.device_status
+		    || hdr.din_resid) {
+			fprintf(stderr, "error %u %u %u\n", hdr.driver_status,
+				hdr.transport_status, hdr.device_status);
+			err = -errno;
 			goto out;
 		}
-	}
 
-	if (hdr.driver_status || hdr.transport_status || hdr.device_status
-	    || hdr.din_resid) {
-		fprintf(stderr, "error %u %u %u\n", hdr.driver_status,
-			hdr.transport_status, hdr.device_status);
-		err = -EINVAL;
-		goto out;
-	}
-
-	if (rw == READ_10) {
-		err = write(out_fd, buf, bs * count);
-		if (err < 0)
-			fprintf(stderr, "fail to write the out file, %m\n");
+		if (rw == READ_10) {
+			err = write(out_fd, buf, bs);
+			if (err < 0)
+				fprintf(stderr, "fail to write the out file, %m\n");
+		}
 	}
 
 	err = 0;
