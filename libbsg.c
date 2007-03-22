@@ -85,5 +85,5 @@ void setup_rw_scb(unsigned char *scb, int scb_len, unsigned char cmd,
 	scb[7] = (unsigned char)(((len / SECTOR_SIZE) >> 8) & 0xff);
 	scb[8] = (unsigned char)((len / SECTOR_SIZE) & 0xff);
 
-	*((uint32_t *) &scb[2]) = htonl(offset);
+	*((uint32_t *) &scb[2]) = htonl(offset / SECTOR_SIZE);
 }
