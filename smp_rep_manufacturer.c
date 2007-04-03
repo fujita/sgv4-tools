@@ -115,7 +115,7 @@ int main(int argc, char **argv)
 	}
 
 	req_len = sizeof(smp_req);
-	rsp_len = 128;
+	rsp_len = 64;
 
 	req = valloc(req_len);
 	smp_resp = valloc(rsp_len);
