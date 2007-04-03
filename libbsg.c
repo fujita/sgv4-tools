@@ -20,6 +20,9 @@ int open_bsg_dev(char *in)
 	FILE *fp;
 	char buf[1024], *path, *dev;
 
+	if (in[strlen(in) - 1] == '/')
+		in[strlen(in) - 1] = 0;
+
 	dev = strrchr(in, '/');
 	if (!dev)
 		return -ENOENT;
