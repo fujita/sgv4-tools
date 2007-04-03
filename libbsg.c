@@ -1,3 +1,10 @@
+/*
+ * bsg lib functions
+ *
+ * Copyright (C) 2007 FUJITA Tomonori <tomof@acm.org>
+ *
+ * Released under the terms of the GNU GPL v2.0.
+ */
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -8,6 +15,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
 #include <linux/bsg.h>
@@ -16,9 +24,10 @@
 
 int open_bsg_dev(char *in)
 {
-	int major, minor, err, fd = -1;
+	int maj, min, err, fd = -1;
+	struct timeval t;
 	FILE *fp;
-	char buf[1024], *path, *dev;
+	char buf[1024], *dev;
 
 	if (in[strlen(in) - 1] == '/')
 		in[strlen(in) - 1] = 0;
@@ -36,24 +45,26 @@ int open_bsg_dev(char *in)
 	if (!fgets(buf, sizeof(buf), fp))
 		goto close_sysfs;
 
-	if (sscanf(buf, "%d:%d", &major, &minor) != 2)
+	if (sscanf(buf, "%d:%d", &maj, &min) != 2)
 		goto close_sysfs;
 
-	path = tempnam("/tmp", NULL);
-	err = mknod(path, (S_IFCHR | 0600), (major << 8) | minor);
+	err = gettimeofday(&t, NULL);
 	if (err)
-		goto free_tempname;
+		goto close_sysfs;
 
-	fd = open(path, O_RDWR);
-	if (fd < 0) {
-		fprintf(stderr, "can't open %s, %m\n", path);
-		goto free_tempname;
-	}
+	memset(buf, 0, sizeof(buf));
+	snprintf(buf, sizeof(buf), "/tmp/%lx%lx", t.tv_sec, t.tv_usec);
+	err = mknod(buf, S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH,
+		    makedev(maj, min));
+	if (err)
+		goto close_sysfs;
 
-	unlink(path);
+	fd = open(buf, O_RDWR);
+	if (fd < 0)
+		fprintf(stderr, "can't open %s, %m\n", buf);
 
-free_tempname:
-	free(path);
+	unlink(buf);
+
 close_sysfs:
 	fclose(fp);
 
