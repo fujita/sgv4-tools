@@ -125,20 +125,22 @@ int main(int argc, char **argv)
 	memset(smp_resp, 0, sizeof(smp_resp));
 
 	hdr.guard = 'Q';
-	hdr.subprotocol = 1;
+	hdr.subprotocol = BSG_SUB_PROTOCOL_SCSI_TRANSPORT;
 	/* dummy */
 	hdr.request_len = sizeof(cmd);
 	hdr.request = (unsigned long) cmd;
 
-	hdr.din_xfer_len = req_len;
-	hdr.din_xferp = (unsigned long) req;
+	hdr.din_xfer_len = rsp_len;
+	hdr.din_xferp = (unsigned long) smp_resp;
 
-	hdr.dout_xfer_len = rsp_len;
-	hdr.dout_xferp = (unsigned long) smp_resp;
+	hdr.dout_xfer_len = req_len;
+	hdr.dout_xferp = (unsigned long) req;
 
-	ioctl(bsg_fd, SG_IO, &hdr);
-
-	printf("%x %x %x %x\n", smp_resp[0], smp_resp[1], smp_resp[2], smp_resp[3]);
+	res = ioctl(bsg_fd, SG_IO, &hdr);
+	if (res) {
+		printf("%d, %d\n", res, errno);
+		exit(1);
+	}
 
 	printf("  SAS-1.1 format: %d\n", smp_resp[8] & 1);
 	printf("  vendor identification: %.8s\n", smp_resp + 12);
