@@ -13,7 +13,7 @@ sgv4_dd: sgv4_dd.o libbsg.o
 sgv4_bench: sgv4_bench.o libbsg.o
 	$(CC) $^ -o $@
 
-smp_rep_manufacturer: smp_rep_manufacturer.o libbsg.o
+smp_rep_manufacturer: smp_rep_manufacturer.o libbsg.o libsmp.o
 	$(CC) $^ -o $@
 
 clean:

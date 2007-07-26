@@ -56,6 +56,7 @@
 #include <byteswap.h>
 
 #include "libbsg.h"
+#include "libsmp.h"
 
 static char pname[] = "smp_rep_manufacturer";
 
@@ -77,9 +78,6 @@ static void usage(int status)
 	}
 	exit(status);
 }
-
-#define SMP_FRAME_TYPE_REQ 0x40
-#define SMP_FN_REPORT_MANUFACTURER 0x1
 
 int main(int argc, char **argv)
 {
@@ -139,6 +137,27 @@ int main(int argc, char **argv)
 	res = ioctl(bsg_fd, SG_IO, &hdr);
 	if (res) {
 		printf("%d, %d\n", res, errno);
+		exit(1);
+	}
+
+	if (SMP_FRAME_TYPE_RESP != smp_resp[0]) {
+		fprintf(stderr, "expected SMP frame response type, got=0x%x\n",
+			smp_resp[0]);
+		exit(1);
+	}
+
+	if (smp_resp[1] != smp_req[1]) {
+		fprintf(stderr, "Expected function code=0x%x, got=0x%x\n",
+			smp_req[1], smp_resp[1]);
+		exit(1);
+	}
+
+	if (smp_resp[2]) {
+		char buf[256];
+		char *cp;
+
+		cp = smp_get_func_res_str(smp_resp[2], sizeof(buf), buf);
+		fprintf(stderr, "Report manufacturer information result: %s\n", cp);
 		exit(1);
 	}
 
