@@ -57,6 +57,7 @@
 
 #include "libbsg.h"
 #include "libsmp.h"
+#include "mptsas.h"
 
 static char pname[] = "smp_rep_manufacturer";
 
@@ -88,6 +89,7 @@ int main(int argc, char **argv)
 	char *req, *smp_resp;
 	unsigned char smp_req[] = {SMP_FRAME_TYPE_REQ,
 				   SMP_FN_REPORT_MANUFACTURER, 0, 0, 0, 0, 0, 0};
+	SmpPassthroughReply_t smpreply;
 
 	while ((ch = getopt_long(argc, argv, "b:c:wo:h", long_options,
 				 &longindex)) >= 0) {
@@ -121,12 +123,16 @@ int main(int argc, char **argv)
 	memset(&hdr, 0, sizeof(hdr));
 	memcpy(req, smp_req, req_len);
 	memset(smp_resp, 0, sizeof(smp_resp));
+	memset(&smpreply, 0, sizeof(smpreply));
 
 	hdr.guard = 'Q';
 	hdr.subprotocol = BSG_SUB_PROTOCOL_SCSI_TRANSPORT;
 	/* dummy */
 	hdr.request_len = sizeof(cmd);
 	hdr.request = (unsigned long) cmd;
+
+	hdr.max_response_len = sizeof(smpreply);
+	hdr.response = (unsigned long) &smpreply;
 
 	hdr.din_xfer_len = rsp_len;
 	hdr.din_xferp = (unsigned long) smp_resp;
@@ -135,6 +141,11 @@ int main(int argc, char **argv)
 	hdr.dout_xferp = (unsigned long) req;
 
 	res = ioctl(bsg_fd, SG_IO, &hdr);
+
+	if (hdr.response_len)
+		printf("IOCStatus=0x%X IOCLogInfo=0x%X SASStatus=0x%X\n",
+		       smpreply.IOCStatus, smpreply.IOCLogInfo, smpreply.SASStatus);
+
 	if (res) {
 		printf("%d, %d\n", res, errno);
 		exit(1);
