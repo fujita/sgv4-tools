@@ -3,7 +3,7 @@ KSRC ?= /lib/modules/$(KERNELRELEASE)/build
 
 CFLAGS += -O2 -fno-inline -Wall -Wstrict-prototypes -g -I$(KSRC)/include
 
-PROGRAMS = sgv4_dd sgv4_bench smp_rep_manufacturer
+PROGRAMS = sgv4_dd sgv4_bench smp_rep_manufacturer sgv4_xdwriteread
 
 all: $(PROGRAMS)
 
@@ -11,6 +11,9 @@ sgv4_dd: sgv4_dd.o libbsg.o
 	$(CC) $^ -o $@
 
 sgv4_bench: sgv4_bench.o libbsg.o
+	$(CC) $^ -o $@
+
+sgv4_xdwriteread: sgv4_xdwriteread.o libbsg.o
 	$(CC) $^ -o $@
 
 smp_rep_manufacturer: smp_rep_manufacturer.o libbsg.o libsmp.o
