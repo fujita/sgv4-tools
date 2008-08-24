@@ -50,7 +50,6 @@
 #include <sys/poll.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
-#include <linux/bsg.h>
 #include <sys/time.h>
 #include <time.h>
 #include <byteswap.h>

@@ -1,6 +1,8 @@
 #ifndef __LIBBSG_H
 #define __LIBBSG_H
 
+#include "bsg.h"
+
 #define SECTOR_SIZE 512
 
 extern int open_bsg_dev(char *in_file);

@@ -18,7 +18,6 @@
 #include <sys/time.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
-#include <linux/bsg.h>
 
 #include "libbsg.h"
 
