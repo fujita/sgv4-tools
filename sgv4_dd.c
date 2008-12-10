@@ -45,7 +45,7 @@ static void usage(int status)
 ");
 		printf("\n\
 Examples:\n\
-  $ sgv4_dd if=/sys/class/bsg/0\:0\:0\:0 of=/dev/null count=1 bs=4k\n\
+  $ sgv4_dd if=/sys/class/bsg/0:0:0:0 of=/dev/null count=1 bs=4k\n\
 ");
 	}
 	exit(status);
