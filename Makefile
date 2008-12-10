@@ -1,8 +1,12 @@
+CFLAGS += -D_GNU_SOURCE
 CFLAGS += -O2 -fno-inline -Wall -Wstrict-prototypes -g
 
-PROGRAMS = sgv2_inq sgv4_dd sgv4_bench smp_rep_manufacturer sgv4_xdwriteread
+PROGRAMS = sgv2_inq sgv2_dd sgv4_dd sgv4_bench smp_rep_manufacturer sgv4_xdwriteread
 
 all: $(PROGRAMS)
+
+sgv2_dd: sgv2_dd.o
+	$(CC) $^ -o $@
 
 sgv2_inq: sgv2_inq.o
 	$(CC) $^ -o $@
