@@ -9,6 +9,8 @@
 #define BSG_SUB_PROTOCOL_SCSI_TMF	1
 #define BSG_SUB_PROTOCOL_SCSI_TRANSPORT	2
 
+#define BSG_FLAG_Q_AT_TAIL 0x10 /* default, == 0 at this bit, is Q_AT_HEAD */
+
 struct sg_io_v4 {
 	int32_t guard;		/* [i] 'Q' to differentiate from v3 */
 	uint32_t protocol;		/* [i] 0 -> SCSI , .... */

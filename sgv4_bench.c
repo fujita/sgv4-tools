@@ -110,6 +110,8 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
 			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
 				       sizeof(sense), NULL, 0, buf, bs);
 
+		hdr.flags |= BSG_FLAG_Q_AT_TAIL;
+
 		ret = write(bsg_fd, &hdr, sizeof(hdr));
 		if (ret < 0) {
 			fprintf(stderr, "fail to write bsg dev, %m\n");
