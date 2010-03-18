@@ -80,7 +80,7 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
 		exit(1);
 	}
 
-	buf = malloc(bs);
+	buf = valloc(bs);
 	if (!buf) {
 		fprintf(stderr, "oom %m\n");
 		exit(1);
