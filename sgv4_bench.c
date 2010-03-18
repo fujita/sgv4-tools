@@ -142,7 +142,7 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
 	bb = b.tv_sec * 1000 * 1000 + b.tv_usec;
 
 	elasped_sec = (bb - aa) / (1000 * 1000.0);
-	sent_bytes = done * bs;
+	sent_bytes = (unsigned long long)done * (unsigned long long)bs;
 
 	printf("block size : %u\n", bs);
 	printf("outstanding : %u\n", max_outstanding);
