@@ -226,6 +226,9 @@ int main(int argc, char **argv)
 	if (bsg_fd < 0)
 		exit(1);
 
+	if (max_outstanding > count)
+		max_outstanding = count;
+
 	loop(bsg_fd, count, max_outstanding, bs, rw);
 
 	return 0;
