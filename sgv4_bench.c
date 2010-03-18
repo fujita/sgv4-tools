@@ -154,6 +154,23 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
 	       sent_bytes / elasped_sec / 1024.0 / 1024.0);
 }
 
+static int parse_blocksize(char *str)
+{
+	int v;
+
+	v = atoi(str);
+	switch (str[strlen(str) - 1]) {
+	case 'k':
+		v *= 1024;
+		break;
+	case 'm':
+		v *= (1024 * 1024);
+		break;
+	}
+
+	return v;
+}
+
 int main(int argc, char **argv)
 {
 	int longindex, ch;
@@ -164,7 +181,7 @@ int main(int argc, char **argv)
 				 &longindex)) >= 0) {
 		switch (ch) {
 		case 'b':
-			bs = atoi(optarg);
+			bs = parse_blocksize(optarg);
 			break;
 		case 'c':
 			count = atoi(optarg);
