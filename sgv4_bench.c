@@ -175,7 +175,7 @@ int main(int argc, char **argv)
 {
 	int longindex, ch;
 	int bs = SECTOR_SIZE, count = 1, bsg_fd;
-	int rw = READ_10, max_outstanding = 1;
+	int rw = READ_10, max_outstanding = 32;
 
 	while ((ch = getopt_long(argc, argv, "b:c:wo:h", long_options,
 				 &longindex)) >= 0) {
