@@ -102,16 +102,6 @@ struct bsg_dev_info {
 
 static struct bsg_dev_info bi[MAX_DEVICE_NR];
 
-static int get_idx(struct bsg_dev_info *bi, int max, int fd)
-{
-	int i;
-
-	for (i = 0; i < max; i++)
-		if (bi[i].fd == fd)
-			return i;
-	return -1;
-}
-
 static void loop(int nr, int total, int max_outstanding, int bs, int rw)
 {
 	int i, ret, no_more_submit = 0;
@@ -195,22 +185,14 @@ static void loop(int nr, int total, int max_outstanding, int bs, int rw)
 		}
 
 		for (i = 0; i < nr; i++) {
-			int j, idx;
-			int done;
+			int j, done;
 
 			if (!(pfd[i].revents & POLLIN))
 				continue;
 
 			pfd[i].revents = 0;
 
-			idx = get_idx(bi, nr, pfd[i].fd);
-			if (idx < 0) {
-				fprintf(stderr, "%d: bug %d %d\n",
-					__LINE__, i, pfd[i].fd);
-				exit(1);
-			}
-
-			done = read(bi[idx].fd, hdrs,
+			done = read(bi[i].fd, hdrs,
 				    sizeof(hdr) * max_outstanding * nr);
 			if (done < 0) {
 				fprintf(stderr, "fail to read from bsg dev, %m\n");
@@ -219,11 +201,11 @@ static void loop(int nr, int total, int max_outstanding, int bs, int rw)
 
 			done /= sizeof(hdr);
 
-			bi[idx].outstanding -= done;
-			bi[idx].done += done;
+			bi[i].outstanding -= done;
+			bi[i].done += done;
 
-			if (bi[idx].done == total) {
-				pfd[idx].events = 0;
+			if (bi[i].done == total) {
+				pfd[i].events = 0;
 				no_more_submit++;
 			}
 
