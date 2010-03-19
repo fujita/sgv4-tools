@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
+#include <sys/mount.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
 #include <sys/time.h>
@@ -56,7 +57,40 @@ static void usage(int status)
 	exit(status);
 }
 
-void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define __be32_to_cpu(x) bswap_32(x)
+#else
+#define __be32_to_cpu(x) (x)
+#endif
+
+static int get_capacity(int fd, uint64_t *size)
+{
+	unsigned char scb[10], sense[32];
+	unsigned int buf[2];
+	int ret;
+	struct sg_io_v4 hdr;
+
+	memset(scb, 0, sizeof(scb));
+	memset(buf, 0, sizeof(buf));
+	memset(&hdr, 0, sizeof(hdr));
+
+	scb[0] = READ_CAPACITY;
+
+	setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
+		       (char *)buf, sizeof(buf), NULL, 0);
+
+	ret = ioctl(fd, SG_IO, &hdr);
+	if (ret) {
+		fprintf(stderr, "%m\n");
+		return ret;
+	}
+
+	*size = (uint64_t)__be32_to_cpu(buf[0]) * (uint64_t)__be32_to_cpu(buf[1]);
+
+	return 0;
+}
+
+void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw, uint64_t size)
 {
 	int i, ret, done, outstanding;
 	char *buf;
@@ -101,7 +135,8 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw)
 	gettimeofday(&a, NULL);
 	while (total > done) {
 	again:
-		setup_rw_scb(scb, sizeof(scb), rw, bs, bs * done);
+		setup_rw_scb(scb, sizeof(scb), rw, bs,
+			     (bs * done) % size);
 
 		if (rw == READ_10)
 			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
@@ -175,7 +210,8 @@ int main(int argc, char **argv)
 {
 	int longindex, ch;
 	int bs = SECTOR_SIZE, count = 1, bsg_fd;
-	int rw = READ_10, max_outstanding = 32;
+	int rw = READ_10, max_outstanding = 32, ret;
+	uint64_t size;
 
 	while ((ch = getopt_long(argc, argv, "b:c:wo:h", long_options,
 				 &longindex)) >= 0) {
@@ -217,6 +253,10 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	if (max_outstanding > count)
+		max_outstanding = count;
+
+
 	if (optind == argc) {
 		fprintf(stderr, "specify a bsg device\n");
 		usage(1);
@@ -226,10 +266,13 @@ int main(int argc, char **argv)
 	if (bsg_fd < 0)
 		exit(1);
 
-	if (max_outstanding > count)
-		max_outstanding = count;
+	ret = get_capacity(bsg_fd, &size);
+	if (ret) {
+		fprintf(stderr, "can't get the capacity\n");
+		exit(1);
+	}
 
-	loop(bsg_fd, count, max_outstanding, bs, rw);
+	loop(bsg_fd, count, max_outstanding, bs, rw, size);
 
 	return 0;
 }
