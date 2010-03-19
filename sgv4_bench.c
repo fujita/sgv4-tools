@@ -28,6 +28,8 @@
 
 #include "libbsg.h"
 
+#define MAX_DEVICE_NR 8
+
 static char pname[] = "sgv4_bench";
 
 static struct option const long_options[] =
@@ -90,28 +92,55 @@ static int get_capacity(int fd, uint64_t *size)
 	return 0;
 }
 
-void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw, uint64_t size)
+struct bsg_dev_info {
+	int fd;
+	uint64_t size;
+
+	int done;
+	int outstanding;
+};
+
+static struct bsg_dev_info bi[MAX_DEVICE_NR];
+
+static int get_idx(struct bsg_dev_info *bi, int max, int fd)
 {
-	int i, ret, done, outstanding;
+	int i;
+
+	for (i = 0; i < max; i++)
+		if (bi[i].fd == fd)
+			return i;
+	return -1;
+}
+
+static void loop(int nr, int total, int max_outstanding, int bs, int rw)
+{
+	int i, ret, no_more_submit = 0;
 	char *buf;
 	unsigned char scb[10], sense[32];
-	struct pollfd pfd[1];
 	struct sg_io_v4 *hdrs, hdr;
 	struct timeval a, b;
 	unsigned long long aa, bb;
 	long double elasped_sec;
 	unsigned long long sent_bytes;
+	unsigned long long total_sent_bytes;
+	struct pollfd pfd[MAX_DEVICE_NR];
 
-	ret = fcntl(bsg_fd, F_GETFL);
-	if (ret < 0) {
-		fprintf(stderr, "can't set non-blocking %m\n");
-		exit(1);
-	}
+	for (i = 0; i < nr; i++) {
+		ret = fcntl(bi[i].fd, F_GETFL);
+		if (ret < 0) {
+			fprintf(stderr, "can't set non-blocking %m\n");
+			exit(1);
+		}
 
-	ret = fcntl(bsg_fd, F_SETFL, ret | O_NONBLOCK);
-	if (ret == -1) {
-		fprintf(stderr, "can't set non-blocking %m\n");
-		exit(1);
+		ret = fcntl(bi[i].fd, F_SETFL, ret | O_NONBLOCK);
+		if (ret == -1) {
+			fprintf(stderr, "can't set non-blocking %m\n");
+			exit(1);
+		}
+
+		pfd[i].fd = bi[i].fd;
+		pfd[i].events = POLLIN;
+		pfd[i].revents = 0;
 	}
 
 	buf = valloc(bs);
@@ -120,73 +149,132 @@ void loop(int bsg_fd, int total, int max_outstanding, int bs, int rw, uint64_t s
 		exit(1);
 	}
 
-	hdrs = malloc(sizeof(hdr) * max_outstanding);
+	hdrs = malloc(sizeof(hdr) * max_outstanding * nr);
 	if (!hdrs) {
 		fprintf(stderr, "oom %m\n");
 		exit(1);
 	}
 
-	memset(pfd, 0, sizeof(pfd));
-	pfd[0].fd = bsg_fd;
-	pfd[0].events = POLLIN;
-
-	done = outstanding = 0;
-
 	gettimeofday(&a, NULL);
-	while (total > done) {
-	again:
-		setup_rw_scb(scb, sizeof(scb), rw, bs,
-			     (bs * done) % size);
+	while (1) {
+		for (i = 0; i < nr && !no_more_submit; i++) {
 
-		if (rw == READ_10)
-			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
-				       sizeof(sense), buf, bs, NULL, 0);
-		else
-			setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
-				       sizeof(sense), NULL, 0, buf, bs);
+			if (max_outstanding == bi[i].outstanding ||
+			    total == bi[i].outstanding + bi[i].done)
+				continue;
+		again:
+			setup_rw_scb(scb, sizeof(scb), rw, bs,
+				     ((bs * (bi[i].done + bi[i].outstanding)) % bi[i].size));
 
-		hdr.flags |= BSG_FLAG_Q_AT_TAIL;
+			if (rw == READ_10)
+				setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
+					       sizeof(sense), buf, bs, NULL, 0);
+			else
+				setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense,
+					       sizeof(sense), NULL, 0, buf, bs);
 
-		ret = write(bsg_fd, &hdr, sizeof(hdr));
-		if (ret < 0) {
-			fprintf(stderr, "fail to write bsg dev, %m\n");
-			break;
+			hdr.flags |= BSG_FLAG_Q_AT_TAIL;
+
+			ret = write(bi[i].fd, &hdr, sizeof(hdr));
+			if (ret < 0) {
+				fprintf(stderr, "fail to write bsg dev, %m\n");
+				exit(1);
+			}
+
+			bi[i].outstanding++;
+
+			if (max_outstanding > bi[i].outstanding &&
+			    total > bi[i].outstanding + bi[i].done)
+				goto again;
 		}
 
-		done++;
-		outstanding++;
+		ret = poll(pfd, nr, -1);
+		if (ret < 0) {
+			fprintf(stderr, "failed to poll from bsg dev, %m\n");
+			exit(1);
+		}
 
-		if ((max_outstanding > outstanding) && (total > done))
-			goto again;
+		for (i = 0; i < nr; i++) {
+			int j, idx;
+			int done;
 
-		ret = poll(pfd, 1, -1);
-		ret = read(bsg_fd, hdrs, sizeof(hdr) * max_outstanding);
+			if (!(pfd[i].revents & POLLIN))
+				continue;
 
-		outstanding -= ret / sizeof(hdr);
+			pfd[i].revents = 0;
 
-		for (i = 0; i < ret / sizeof(hdr); i++) {
-			if (sgv4_rsp_check(&hdr))
-				fprintf(stderr, "error %u %u %u\n",
-					hdrs[i].driver_status,
-					hdrs[i].transport_status, hdrs[i].device_status);
+			idx = get_idx(bi, nr, pfd[i].fd);
+			if (idx < 0) {
+				fprintf(stderr, "%d: bug %d %d\n",
+					__LINE__, i, pfd[i].fd);
+				exit(1);
+			}
+
+			done = read(bi[idx].fd, hdrs,
+				    sizeof(hdr) * max_outstanding * nr);
+			if (done < 0) {
+				fprintf(stderr, "fail to read from bsg dev, %m\n");
+				exit(1);
+			}
+
+			done /= sizeof(hdr);
+
+			bi[idx].outstanding -= done;
+			bi[idx].done += done;
+
+			if (bi[idx].done == total) {
+				pfd[idx].events = 0;
+				no_more_submit++;
+			}
+
+			for (j = 0; j < done; j++) {
+				if (sgv4_rsp_check(&hdr))
+					fprintf(stderr, "error %u %u %u\n",
+						hdrs[j].driver_status,
+						hdrs[j].transport_status,
+						hdrs[j].device_status);
+			}
+		}
+
+		if (no_more_submit) {
+			int outstanding = 0;
+			for (i = 0; i < nr; i++)
+				outstanding += bi[i].outstanding;
+
+			if (!outstanding)
+				break;
 		}
 	}
+
 	gettimeofday(&b, NULL);
 
 	aa = a.tv_sec * 1000 * 1000 + a.tv_usec;
 	bb = b.tv_sec * 1000 * 1000 + b.tv_usec;
 
 	elasped_sec = (bb - aa) / (1000 * 1000.0);
-	sent_bytes = (unsigned long long)done * (unsigned long long)bs;
 
 	printf("block size : %u\n", bs);
 	printf("outstanding : %u\n", max_outstanding);
-	printf("done : %u\n", done);
 	printf("elapsed time : %Lf[s]\n", elasped_sec);
-	printf("totalbyte : %llu [bytes]\n", sent_bytes);
-	printf("bandwidht : %Lf [KB/s], %Lf [MB/s]\n",
-	       sent_bytes / elasped_sec / 1024.0,
-	       sent_bytes / elasped_sec / 1024.0 / 1024.0);
+
+	total_sent_bytes = 0;
+
+	for (i = 0; i < nr; i++) {
+		sent_bytes = (unsigned long long)bi[i].done * (unsigned long long)bs;
+		total_sent_bytes += sent_bytes;
+
+		printf("\n%dth device\n", i);
+		printf("done : %u\n", bi[i].done);
+		printf("totalbyte : %llu [bytes]\n", sent_bytes);
+		printf("bandwidht : %Lf [KB/s], %Lf [MB/s]\n",
+		       sent_bytes / elasped_sec / 1024.0,
+		       sent_bytes / elasped_sec / 1024.0 / 1024.0);
+	}
+
+	if (nr)
+		printf("\ntotal bandwidht : %Lf [KB/s], %Lf [MB/s]\n",
+		       total_sent_bytes / elasped_sec / 1024.0,
+		       total_sent_bytes / elasped_sec / 1024.0 / 1024.0);
 }
 
 static int parse_blocksize(char *str)
@@ -209,9 +297,8 @@ static int parse_blocksize(char *str)
 int main(int argc, char **argv)
 {
 	int longindex, ch;
-	int bs = SECTOR_SIZE, count = 1, bsg_fd;
+	int bs = SECTOR_SIZE, count = 1, i;
 	int rw = READ_10, max_outstanding = 32, ret;
-	uint64_t size;
 
 	while ((ch = getopt_long(argc, argv, "b:c:wo:h", long_options,
 				 &longindex)) >= 0) {
@@ -256,23 +343,30 @@ int main(int argc, char **argv)
 	if (max_outstanding > count)
 		max_outstanding = count;
 
-
-	if (optind == argc) {
+	if (argc == optind) {
 		fprintf(stderr, "specify a bsg device\n");
 		usage(1);
 	}
 
-	bsg_fd = open_bsg_dev(argv[optind]);
-	if (bsg_fd < 0)
-		exit(1);
-
-	ret = get_capacity(bsg_fd, &size);
-	if (ret) {
-		fprintf(stderr, "can't get the capacity\n");
+	if (argc - optind > MAX_DEVICE_NR) {
+		fprintf(stderr, "too many devices, the max is %d\n",
+			MAX_DEVICE_NR);
 		exit(1);
 	}
 
-	loop(bsg_fd, count, max_outstanding, bs, rw, size);
+	for (i = 0; i < argc - optind; i++) {
+		bi[i].fd = open_bsg_dev(argv[optind + i]);
+		if (bi[i].fd < 0)
+			exit(1);
+
+		ret = get_capacity(bi[i].fd, &(bi[i].size));
+		if (ret) {
+			fprintf(stderr, "can't get the capacity\n");
+			exit(1);
+		}
+	}
+
+	loop(argc - optind, count, max_outstanding, bs, rw);
 
 	return 0;
 }
