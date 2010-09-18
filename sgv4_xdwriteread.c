@@ -25,7 +25,13 @@
 #define XDWRITEREAD_10 0x53
 #endif
 
+#ifndef VARIABLE_LENGTH_CMD
+#define VARIABLE_LENGTH_CMD 0x7f
+#endif
+
 static char pname[] = "sgv4_xdwriteread";
+
+int xdwriteread_32 = 0;
 
 static struct option const long_options[] =
 {
@@ -44,6 +50,7 @@ static void usage(int status)
 		printf("\
   -l, --length            number of bytes. Default is 8192.\n\
   -o, --outfile           write to FILE.\n\
+  -e, --extended	  use XDWRITEREAD_32.\n\
   -h, --help              display this help and exit\n\
 ");
 	}
@@ -53,7 +60,8 @@ static void usage(int status)
 static int xdwriteread(int bsg_fd, int bufsize, char *outfile)
 {
 	struct sg_io_v4 hdr;
-	unsigned char scb[10], sense[32];
+	unsigned int blocks;
+	unsigned char scb[32], sense[32];
 	char *in, *out;
 	int ret;
 
@@ -69,11 +77,29 @@ static int xdwriteread(int bsg_fd, int bufsize, char *outfile)
 
 	memset(in, 0, bufsize);
 	memset(out, 0, bufsize + 1024);
+	memset(scb, 0, 32);
 
-	setup_sgv4_hdr(&hdr, scb, sizeof(scb), sense, sizeof(sense),
+	if (xdwriteread_32) {
+		setup_sgv4_hdr(&hdr, scb, 32, sense, sizeof(sense),
+			in, bufsize, out + 1024, bufsize);
+
+		scb[0] = VARIABLE_LENGTH_CMD;
+		scb[7] = 0x18; /* Additional CDB length */
+		scb[9] = 0x07; /* XDWRITEREAD_32 */
+		/*
+		 * Assume LBA = 0 for now..
+		 */
+		blocks = (bufsize / 512);
+		scb[28] = (blocks >> 24) & 0xff;
+		scb[29] = (blocks >> 16) & 0xff;
+		scb[30] = (blocks >> 8) & 0xff;
+		scb[31] = blocks & 0xff;
+	} else {
+		setup_sgv4_hdr(&hdr, scb, 10, sense, sizeof(sense),
 		       in, bufsize, out + 1024, bufsize);
 
-	setup_rw_scb(scb, sizeof(scb), XDWRITEREAD_10, bufsize, 0);
+		setup_rw_scb(scb, sizeof(scb), XDWRITEREAD_10, bufsize, 0);
+	}
 
 	ret = write(bsg_fd, &hdr, sizeof(hdr));
 	if (ret != sizeof(hdr)) {
@@ -85,9 +111,9 @@ static int xdwriteread(int bsg_fd, int bufsize, char *outfile)
 	if (ret != sizeof(hdr))
 		fprintf(stderr, "Can't get a bsg response, %m\n");
 
-	printf("driver:%u, transport:%u, device:%u, din_resid: %d, dout_resid: %d\n",
-	       hdr.driver_status, hdr.transport_status, hdr.device_status,
-	       hdr.din_resid, hdr.dout_resid);
+	printf("%s driver:%u, transport:%u, device:%u, din_resid: %d, dout_resid: %d\n",
+	       (xdwriteread_32) ? "XDWRITEREAD_32" : "XDWRITEREAD_10", hdr.driver_status,
+		hdr.transport_status, hdr.device_status, hdr.din_resid, hdr.dout_resid);
 
 	if (outfile) {
 		int fd = open(outfile, O_RDWR|O_CREAT);
@@ -113,7 +139,7 @@ int main(int argc, char **argv)
 	int length = 8192;
 	char *out = NULL;
 
-	while ((ch = getopt_long(argc, argv, "l:h", long_options,
+	while ((ch = getopt_long(argc, argv, "l:eh", long_options,
 				 &longindex)) >= 0) {
 		switch (ch) {
 		case 'l':
@@ -121,6 +147,9 @@ int main(int argc, char **argv)
 			break;
 		case 'o':
 			out = optarg;
+			break;
+		case 'e':
+			xdwriteread_32 = 1;		
 			break;
 		case 'h':
 			usage(0);
